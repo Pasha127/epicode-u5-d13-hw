@@ -1,17 +1,51 @@
-import { useEffect, useState } from "react"
-import {
-  Container,
-  Row,
-  Col,
-  Form,
-  FormControl,
-  ListGroup,
-  Button,
-} from "react-bootstrap"
+import { useEffect, useState } from "react";
+import {Container,Row,Col,Form,FormControl,ListGroup,Button} from "react-bootstrap";
+import {io} from "socket.io-client";
+import {Message,User} from "../types/index.js";
+
+const socket = io("https://cog-chat.herokuapp.com/", {transports:["websocket"]})
+console.log()
 
 const Home = () => {
-  const [username, setUsername] = useState("")
-  const [message, setMessage] = useState("")
+  const [username, setUsername] = useState("");
+  const [message, setMessage] = useState("");
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
+  const [chatHistory, setChatHistory] = useState<Message[]>([]);
+
+  useEffect(() => {
+  socket.on("welcome", welcomeMessage => {
+    console.log(welcomeMessage);
+    socket.on("loggedIn", onlineUsersList => {
+      console.log("ONLINE USERS: ", onlineUsersList);
+      setLoggedIn(true);
+      setOnlineUsers(onlineUsersList);
+      socket.on("listUpdate", onlineUsersList => {
+        console.log("New user online");
+        setOnlineUsers(onlineUsersList);
+      });
+      socket.on("newMessage", receivedMessage => {
+        console.log("new message ", receivedMessage);
+        setChatHistory(chatHistory => [...chatHistory, receivedMessage.message]);
+        });
+      });
+    });
+  });
+
+  const submitUsername = () => {
+    console.log("SUBMIT")
+    socket.emit("setUsername", { username })
+    }
+
+  const sendMessage = () => {
+    const newMessage: Message = {
+      sender: username,
+      text: message,
+      createdAt: new Date().toLocaleString("en-US"),
+    }
+    socket.emit("sendMessage", { message: newMessage })
+    setChatHistory([...chatHistory, newMessage])
+  }
 
   return (
     <Container fluid>
@@ -22,7 +56,8 @@ const Home = () => {
           {/* {!loggedIn && ( */}
           <Form
             onSubmit={e => {
-              e.preventDefault()
+              e.preventDefault();
+              submitUsername();
             }}
           >
             <FormControl
@@ -33,11 +68,17 @@ const Home = () => {
           </Form>
           {/* )} */}
           {/* MIDDLE AREA: CHAT HISTORY */}
-          <ListGroup></ListGroup>
+          <ListGroup> {chatHistory.map((element, i) => (
+              <ListGroup.Item key={i}>
+                <strong>{element.sender} </strong> | {element.text} at{" "}
+                {new Date(element.createdAt).toLocaleTimeString("en-US")}
+              </ListGroup.Item>
+            ))}</ListGroup>
           {/* BOTTOM AREA: NEW MESSAGE */}
           <Form
             onSubmit={e => {
-              e.preventDefault()
+              e.preventDefault();
+              sendMessage();
             }}
           >
             <FormControl
@@ -50,6 +91,14 @@ const Home = () => {
         <Col md={3}>
           {/* ONLINE USERS SECTION */}
           <div className="mb-3">Connected users:</div>
+          {onlineUsers.length === 0 && (
+            <ListGroup.Item>Log in to check who's online!</ListGroup.Item>
+          )}
+          <ListGroup>
+            {onlineUsers.map(user => (
+              <ListGroup.Item key={user.socketId}>{user.username}</ListGroup.Item>
+            ))}
+          </ListGroup>
         </Col>
       </Row>
     </Container>
